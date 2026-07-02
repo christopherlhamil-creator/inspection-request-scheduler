@@ -12,8 +12,9 @@ any one client via a [`Config.gs`](Config.gs) layer.
 | [`XlsxImport.gs`](XlsxImport.gs) | Reads a construction-management platform's `.xlsx` export with no external library — unzips it, parses the shared-string table and cell grid, and resolves hyperlinked cells by joining the sheet's `<hyperlink>` elements against the worksheet's *relationships* XML. Covered by the tests described below. |
 | [`BootstrapDeploy.gs`](BootstrapDeploy.gs) | Self-configuring first run: resolves the database Spreadsheet and Drive folder **by name**, not by ID, so a copy of this project works on a fresh Google account with zero config edits. |
 | [`LessonsLearned.gs`](LessonsLearned.gs) | Mines a project's own inspection-failure history for recurring patterns, promotes a pattern to a lesson once it clears a recurrence threshold, and flags which lessons are urgent because that trade's scope hasn't started elsewhere on the project yet. |
+| [`SectionCrosswalk.gs`](SectionCrosswalk.gs) | The foundation everything else assumes: reconciles a spec section referenced in five inconsistent formats to one canonical key, refusing to guess on genuinely ambiguous input, then audits coverage and finds orphans in both directions. |
 
-## The six things worth reading
+## The seven things worth reading
 
 **`travelConflicts_()`** — the whole reason the tool exists. Scheduled inspections for the single
 authority inspector are grouped by day and walked in time order; each adjacent pair is flagged when the
@@ -54,6 +55,19 @@ merely informative or is it still possible to act on before the mistake repeats.
 that hasn't started its scope in another building yet is worth far more than the same pattern from a
 trade that already finished there — and that comparison is exactly what a person re-reading a static
 spreadsheet is least likely to make consistently across every lesson, every building, every week.
+
+**`normalizeSectionCode_()`** — the join key every other file in this repo quietly assumes exists. The
+same spec section is referenced as a legacy 5-digit MasterFormat code with no leading division digit
+(`19100`), a modern 6-digit code with no separators (`033000`), a fully-formatted code with a
+sub-paragraph locator (`01 32 33.12`), or plain data-entry garbage — depending on which system logged it.
+This normalizes all of the legitimate forms to one canonical `NN NN NN` key and, just as importantly,
+**refuses to normalize anything genuinely ambiguous** (two codes crammed into one cell, a digit run too
+long to be a real section) rather than silently guessing and mis-joining two different sections. Tested
+against the exact shapes of input that show up in a real export — including the specific failure modes
+(multi-value cells, out-of-range digit counts, non-numeric garbage) — before shipping.
+`buildCoverageMatrix_()` and `findOrphans_()` then run on top of that key: per section, how many of N
+source systems have a record, and — checking both directions — which scoped work items have no
+supporting evidence anywhere, and which evidence has no scoped work item behind it.
 
 ## Two implementation notes from production
 

@@ -164,6 +164,30 @@
   .cfchip.actionable{background:var(--stop-tint);color:var(--stop)}
   .cfchip.review{background:var(--sched-tint);color:var(--sched)}
   .ll-filtered{color:var(--mut);font-size:12px;font-style:italic;padding:8px 4px}
+
+  /* section crosswalk */
+  .xwalk-try{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .xwalk-try input{width:220px;font-family:var(--mono)}
+  .xwalk-try .preset{font-size:11.5px;padding:4px 9px}
+  .xwalk-result{font-family:var(--mono);font-size:13px;padding:8px 12px;border-radius:8px;margin-bottom:16px;
+    background:var(--panel);border:1px solid var(--line);display:inline-block}
+  .xwalk-result.ok{background:var(--go-tint);color:var(--go);border-color:transparent}
+  .xwalk-result.fail{background:var(--stop-tint);color:var(--stop);border-color:transparent}
+  table.xwalk{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px}
+  table.xwalk th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);
+    font-weight:600;padding:6px 10px;border-bottom:1px solid var(--line)}
+  table.xwalk td{padding:7px 10px;border-bottom:1px solid var(--line2);font-family:var(--mono);font-variant-numeric:tabular-nums}
+  table.xwalk td.sec{font-weight:650;font-family:var(--sans)}
+  table.xwalk td.note{font-family:var(--sans);color:var(--mut);font-size:11.5px;font-style:italic}
+  .hpill{font-family:var(--sans);font-size:10.5px;font-weight:650;text-transform:uppercase;padding:2px 8px;border-radius:20px}
+  .hpill.strong{background:var(--go-tint);color:var(--go)}
+  .hpill.ok{background:var(--sched-tint);color:var(--sched)}
+  .hpill.thin{background:var(--hold-tint);color:var(--hold)}
+  .health-chips{display:flex;gap:10px;flex-wrap:wrap}
+  .hchip{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 14px;min-width:150px}
+  .hchip .v{font-family:var(--mono);font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+  .hchip.warn .v{color:var(--stop)}
+  .hchip .k{font-size:11px;color:var(--mut);margin-top:2px}
 </style>
 
 <div class="ib-root">
@@ -210,6 +234,30 @@
       <div class="pane-h"><h2>Scheduled inspections</h2><span class="n" id="nRight"></span></div>
       <div class="col" id="right"></div>
     </div>
+  </div>
+
+  <div class="gates-sec">
+    <div class="gates-h"><h2>System health &amp; section crosswalk</h2></div>
+    <p class="gates-sub">Everything above assumes a spec section means the same thing in the drawing
+      index, the submittal log, and the inspection record. It doesn't, automatically — the same section
+      shows up as legacy 5-digit code, modern 6-digit code with no separators, or a fully-formatted code
+      with a sub-paragraph locator tacked on, depending on which system logged it. This reconciles all of
+      them to one canonical key, refusing to guess on anything genuinely ambiguous — and then audits what
+      that join actually covers.</p>
+    <div class="xwalk-try">
+      <input type="text" id="xwalkInput" value="19100.0" placeholder="raw section code…">
+      <button class="btn mini pri" id="xwalkGo">Normalize</button>
+      <button class="btn mini preset" data-v="033000">033000</button>
+      <button class="btn mini preset" data-v="01 32 33.12">01 32 33.12</button>
+      <button class="btn mini preset" data-v="231113, 232113">231113, 232113</button>
+      <button class="btn mini preset" data-v="CMMP V3">CMMP V3</button>
+    </div>
+    <div id="xwalkResult" class="xwalk-result"></div>
+    <table class="xwalk">
+      <thead><tr><th>Section</th><th>Spec</th><th>Drawings</th><th>Submittals</th><th>Inspections</th><th>Work items</th><th>Health</th></tr></thead>
+      <tbody id="xwalkBody"></tbody>
+    </table>
+    <div class="health-chips" id="xwalkHealth"></div>
   </div>
 
   <div class="gates-sec">
@@ -325,6 +373,56 @@
     { id:"ECN-07", date:day(-1),  title:"Reroute MV feeder around new transformer pad", specs:["26 05 00"], drawings:["E-101 · Feeder Routing"] }
   ];
   var selectedBulletin=null;
+
+  // ── section crosswalk: canonical key + coverage/orphan audit ────────
+  function normalizeSectionCode_(raw){
+    var s=String(raw==null?'':raw).trim();
+    if(!s) return {ok:false, reason:'empty'};
+    if(/[\/,]/.test(s)) return {ok:false, reason:'multiple codes in one cell'};
+    var compact=s.replace(/\s+/g,'');
+    var m=compact.match(/^(\d{5,7})(?:\.\d+)?/);
+    if(!m) return {ok:false, reason:'no leading numeric section code'};
+    var digits=m[1];
+    if(digits.length===7) return {ok:false, reason:'too many digits — ambiguous division/section split'};
+    if(digits.length===5) digits='0'+digits;
+    return {ok:true, canonical:digits.replace(/(\d{2})(?=\d)/g,'$1 ').trim()};
+  }
+  function buildCoverageMatrix_(recordCounts, allSections){
+    var sources=Object.keys(recordCounts);
+    return allSections.map(function(section){
+      var counts={}, sourcesPresent=0;
+      sources.forEach(function(source){
+        var n=(recordCounts[source][section])||0;
+        counts[source]=n;
+        if(n>0) sourcesPresent++;
+      });
+      var health=sourcesPresent>=4?'Strong':sourcesPresent>=2?'OK':'Thin';
+      return {section:section, counts:counts, sourcesPresent:sourcesPresent, health:health};
+    });
+  }
+  function findOrphans_(recordCounts, allSections, workItemSource){
+    var evidenceSources=Object.keys(recordCounts).filter(function(s){return s!==workItemSource;});
+    function hasEvidence(section){ return evidenceSources.some(function(s){return (recordCounts[s][section]||0)>0;}); }
+    function hasWorkItem(section){ return (recordCounts[workItemSource][section]||0)>0; }
+    return {
+      orphanWorkItems: allSections.filter(function(s){return hasWorkItem(s)&&!hasEvidence(s);}),
+      orphanEvidence: allSections.filter(function(s){return !hasWorkItem(s)&&hasEvidence(s);})
+    };
+  }
+
+  var XWALK_SECTIONS=["01 33 00","03 30 00","23 21 00","26 05 00","07 84 00","21 13 00"];
+  var XWALK_TITLES={
+    "01 33 00":"Submittal Procedures","03 30 00":"Cast-in-Place Concrete","23 21 00":"Chilled Water Piping",
+    "26 05 00":"Common Electrical Requirements","07 84 00":"Firestopping","21 13 00":"Fire Suppression Sprinklers"
+  };
+  var XWALK_NOTES={ "01 33 00":"admin section — thin is expected, no physical scope to inspect" };
+  var XWALK_COUNTS={
+    Spec:        {"01 33 00":1,"03 30 00":1,"23 21 00":1,"26 05 00":1,"07 84 00":0,"21 13 00":0},
+    Drawings:    {"01 33 00":0,"03 30 00":5,"23 21 00":2,"26 05 00":1,"07 84 00":0,"21 13 00":1},
+    Submittals:  {"01 33 00":0,"03 30 00":4,"23 21 00":1,"26 05 00":0,"07 84 00":0,"21 13 00":0},
+    Inspections: {"01 33 00":0,"03 30 00":9,"23 21 00":0,"26 05 00":0,"07 84 00":0,"21 13 00":3},
+    WorkItems:   {"01 33 00":0,"03 30 00":1,"23 21 00":1,"26 05 00":1,"07 84 00":1,"21 13 00":0}
+  };
 
   // ── lessons learned: pattern mining + carry-forward ──────────────────
   // Pre-aggregated failure counts per (category, trade, pattern, building) —
@@ -515,6 +613,7 @@
     if(!right.length)Rt.appendChild(mkEmpty('Nothing scheduled.'));
     right.forEach(function(r){Rt.appendChild(card(r,'right'));});
 
+    drawCrosswalk();
     drawBulletins();
     drawGates();
     drawSummary();
@@ -559,6 +658,46 @@
       wrap.appendChild(el);
     });
   }
+
+  function runXwalkTry(){
+    var v=document.getElementById('xwalkInput').value;
+    var r=normalizeSectionCode_(v);
+    var box=document.getElementById('xwalkResult');
+    box.className='xwalk-result '+(r.ok?'ok':'fail');
+    box.textContent=r.ok ? ('"'+v+'" → '+r.canonical) : ('"'+v+'" → refused: '+r.reason);
+  }
+  function drawCrosswalk(){
+    var rows=buildCoverageMatrix_(XWALK_COUNTS, XWALK_SECTIONS);
+    var body=document.getElementById('xwalkBody'); body.innerHTML='';
+    rows.forEach(function(r){
+      var tr=document.createElement('tr');
+      var noteHtml = XWALK_NOTES[r.section] ? '<div class="note">'+esc(XWALK_NOTES[r.section])+'</div>' : '';
+      tr.innerHTML=
+        '<td class="sec">'+esc(r.section)+' <span style="font-weight:400;color:var(--mut)">'+esc(XWALK_TITLES[r.section]||'')+'</span>'+noteHtml+'</td>'+
+        '<td>'+r.counts.Spec+'</td><td>'+r.counts.Drawings+'</td><td>'+r.counts.Submittals+'</td>'+
+        '<td>'+r.counts.Inspections+'</td><td>'+r.counts.WorkItems+'</td>'+
+        '<td><span class="hpill '+r.health.toLowerCase()+'">'+r.health+'</span></td>';
+      body.appendChild(tr);
+    });
+    var orphans=findOrphans_(XWALK_COUNTS, XWALK_SECTIONS, 'WorkItems');
+    var linked=XWALK_SECTIONS.filter(function(s){return rows.filter(function(r){return r.section===s;})[0].sourcesPresent>1;}).length;
+    var chips=[
+      {v:XWALK_SECTIONS.length, k:'Canonical sections tracked', warn:false},
+      {v:linked+'/'+XWALK_SECTIONS.length, k:'Sections with 2+ sources agreeing', warn:false},
+      {v:orphans.orphanWorkItems.length, k:'Work items with zero supporting evidence', warn:orphans.orphanWorkItems.length>0},
+      {v:orphans.orphanEvidence.length, k:'Evidence with no scoped work item', warn:orphans.orphanEvidence.length>0}
+    ];
+    var wrap=document.getElementById('xwalkHealth'); wrap.innerHTML='';
+    chips.forEach(function(c){
+      var el=document.createElement('div'); el.className='hchip'+(c.warn?' warn':'');
+      el.innerHTML='<div class="v">'+c.v+'</div><div class="k">'+esc(c.k)+'</div>';
+      wrap.appendChild(el);
+    });
+  }
+  document.getElementById('xwalkGo').onclick=runXwalkTry;
+  document.querySelectorAll('.xwalk-try .preset').forEach(function(btn){
+    btn.onclick=function(){ document.getElementById('xwalkInput').value=btn.getAttribute('data-v'); runXwalkTry(); };
+  });
 
   function drawLessons(){
     var wrap=document.getElementById('lessons'); wrap.innerHTML='';
@@ -607,5 +746,6 @@
 
   ['fBuilding','fWindow','fRight'].forEach(function(id){document.getElementById(id).addEventListener('change',draw);});
   draw();
+  runXwalkTry();
 })();
 </script>

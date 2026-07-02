@@ -6,10 +6,10 @@ gate** for large construction projects — the kind where a whole campus of trad
 scope of work.
 
 **▶ Live interactive demo:** open [`index.html`](index.html) in any browser — no build step, no server,
-no dependencies, works offline. All data is synthetic. Assign a request, walk the sign-off chain, watch
-the conflict scan flag two 2 PM requests in different buildings — then scroll to the **change timeline**
-and click an engineering change notice to trace what it re-locks, and past that to the **lessons learned
-register**, where every recurring failure pattern gets a live, per-building carry-forward call.
+no dependencies, works offline. All data is synthetic. Try the **section crosswalk** normalizer with a
+messy code of your own, watch the **change timeline** re-lock a work package, assign an inspection and
+walk its sign-off chain, watch the conflict scan flag two 2 PM requests in different buildings, and check
+the **lessons learned register** for a live, per-building carry-forward call on every recurring failure.
 
 ---
 
@@ -53,6 +53,24 @@ attention reads at a glance.
 inspector. Third-party testing-agency inspections are a separate entity the team only reviews and
 counter-signs — no conflict resolution — so they're filtered into their own lane rather than polluting
 the conflict scan.
+
+## The foundation everything else assumes: one canonical section key
+
+Every join in this system — spec line to drawing, drawing to submittal, submittal to inspection — quietly
+assumes a spec section means the same thing wherever it's referenced. It doesn't, automatically. The same
+section shows up as a legacy 5-digit code with no leading division digit (`19100`), a modern 6-digit code
+with no separators (`033000`), a fully-formatted code with a sub-paragraph locator tacked on
+(`01 32 33.12`), or plain data-entry garbage, depending on which system logged it. Reconcile those
+inconsistently and every downstream join silently drifts.
+
+The **section crosswalk** panel in the demo is a live version of the actual normalizer — type any of
+those forms in and it either resolves to one canonical `NN NN NN` key or, for anything genuinely
+ambiguous (two codes in one cell, a digit run too long to be a real section), **refuses to guess** and
+says why. Below it, a coverage matrix shows how many of five source systems have a record for each
+section, with a health flag (`Thin` / `OK` / `Strong`), and an orphan check runs in both directions:
+scoped work with no supporting evidence anywhere, and evidence with no scoped work behind it. This is the
+part that has to be right before anything built on top of it — the change timeline, the gates, the
+lessons register — can be trusted.
 
 ## Beyond scheduling: the compliance backbone
 
@@ -166,6 +184,7 @@ asked about directly.
 | **XLSX / hyperlink import** *(this repo, [`apps-script/XlsxImport.gs`](apps-script/XlsxImport.gs))* | Parses the CM platform's spreadsheet exports with no external library, including hyperlink resolution via the workbook's relationships XML |
 | **Bootstrap / deploy** *(this repo, [`apps-script/BootstrapDeploy.gs`](apps-script/BootstrapDeploy.gs))* | Name-based Drive resource discovery — the same script deploys to a new Google account with zero hardcoded IDs |
 | **Lessons learned** *(this repo, [`apps-script/LessonsLearned.gs`](apps-script/LessonsLearned.gs))* | Mines a failure tally for recurring patterns and flags which ones are still actionable elsewhere on the project |
+| **Section crosswalk** *(this repo, [`apps-script/SectionCrosswalk.gs`](apps-script/SectionCrosswalk.gs))* | Reconciles inconsistent spec-section formats to one canonical key; coverage/orphan audit across source systems |
 | Sub Portal | External subcontractor view — reschedule, hold, withdraw an inspection request without internal-tool access |
 | MEP PM Board | Trade coordination view for mechanical/electrical/plumbing scope |
 | 3-Week Look-Ahead | Rolling schedule view scoped to near-term work |
