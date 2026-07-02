@@ -124,6 +124,29 @@ and autonomously inside a Google Workspace environment that didn't allow externa
 state machine, and the work-package gate logic) with a configuration layer in place of the original
 hard-wired constants.
 
+## System map
+
+The scheduler, the change timeline, and the gates are one spoke of a larger hub-and-spoke QMS — a single
+Apps Script deploy with one lean database, extended by independent modules rather than one monolith.
+Not every spoke has a build in this portfolio; the shape of the whole system is real, and the two spokes
+below get their own code sample because they're the least visible from the UI and the most likely to get
+asked about directly.
+
+| Spoke | What it did |
+|---|---|
+| **Inspection Scheduler** *(this repo)* | Travel-conflict scheduling, sign-off chain, change timeline, work package gates |
+| **XLSX / hyperlink import** *(this repo, [`apps-script/XlsxImport.gs`](apps-script/XlsxImport.gs))* | Parses the CM platform's spreadsheet exports with no external library, including hyperlink resolution via the workbook's relationships XML |
+| **Bootstrap / deploy** *(this repo, [`apps-script/BootstrapDeploy.gs`](apps-script/BootstrapDeploy.gs))* | Name-based Drive resource discovery — the same script deploys to a new Google account with zero hardcoded IDs |
+| Sub Portal | External subcontractor view — reschedule, hold, withdraw an inspection request without internal-tool access |
+| MEP PM Board | Trade coordination view for mechanical/electrical/plumbing scope |
+| 3-Week Look-Ahead | Rolling schedule view scoped to near-term work |
+| Daily Report | Field QC daily reporting |
+| NCR Register | Non-conformance tracking and corrective-action verification |
+| Concrete Break Tracking | Lab break-test results parsed and matched against the pour schedule |
+| Notifications / Feedback | Routed alerts and an in-app feedback loop |
+| Executive Dashboard / Command Center | Roll-up views for project leadership |
+| Calendar sync | Two-way sync between the inspection schedule and a Google Calendar, so a scheduled inspection shows up as a real calendar event and a calendar edit reflects back — the same conflict-detection principle as the travel scan, applied to meeting-room double-booking |
+
 ## License
 
 [MIT](LICENSE) — the code is a portfolio sample; use any of it.
