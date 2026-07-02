@@ -130,6 +130,23 @@
   .gitem.off span.k{color:var(--mut)}
   .gnote{font-size:12px;color:var(--hold);margin-top:9px;background:var(--hold-tint);border-radius:6px;padding:6px 8px}
   .gnote.stop{color:var(--stop);background:var(--stop-tint)}
+  .gate .req{font-size:12.5px;color:#3f4d5a;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line2)}
+  .gate .dwg{font-size:11.5px;color:var(--mut);margin-top:3px}
+  .gate.hl{box-shadow:0 0 0 2px var(--steel);border-color:var(--steel)}
+
+  /* change timeline */
+  .bull-strip{display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 4px}
+  .bull{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:8px 12px;cursor:pointer;
+    min-width:190px;transition:border-color .12s,box-shadow .12s}
+  .bull:hover{border-color:#bcccd8}
+  .bull.sel{border-color:var(--steel);box-shadow:0 0 0 2px var(--steel-tint)}
+  .bull .id{font-family:var(--mono);font-size:11px;color:var(--steel);font-weight:600}
+  .bull .bdate{font-family:var(--mono);font-size:11px;color:var(--mut);float:right}
+  .bull .btitle{font-size:12.5px;margin-top:3px;text-wrap:balance}
+  .bull-summary{font-size:12.5px;color:var(--ink);background:var(--steel-tint);border-radius:8px;
+    padding:9px 12px;margin:2px 0 16px;display:none}
+  .bull-summary.show{display:block}
+  .bull-summary b{color:var(--steel)}
 </style>
 
 <div class="ib-root">
@@ -179,11 +196,17 @@
   </div>
 
   <div class="gates-sec">
+    <div class="gates-h"><h2>Change timeline</h2></div>
+    <p class="gates-sub">Every work package below traces back to one Division 1 requirement. Select an
+      engineering change notice to see exactly what it touches — click one and watch the affected
+      package(s) light up on the right.</p>
+    <div class="bull-strip" id="bulletins"></div>
+    <div class="bull-summary" id="bullSummary"></div>
+
     <div class="gates-h"><h2>Work package gates</h2></div>
-    <p class="gates-sub">Inspections aren't the end of the line — they're evidence that unlocks a scope of
-      work. A package can't open until its submittals are approved, RFIs are clear, and a pre-install
-      meeting was held. And if an engineering change later revises the governing drawing, any inspection
-      recorded against the old revision goes stale — the gate re-locks until it's redone.</p>
+    <p class="gates-sub">A package can't open until its submittals are approved, RFIs are clear, and a
+      pre-install meeting was held. And if an engineering change revises the governing drawing after an
+      inspection was recorded, that evidence goes stale — the gate re-locks until it's redone.</p>
     <div class="gates-grid" id="gates"></div>
   </div>
 
@@ -244,22 +267,38 @@
   // until it's redone. This is the compliance backbone the scheduler feeds.
   var WORK_PACKAGES=[
     { spec:"26 05 00", name:"MV Feeder Installation", building:"B1",
+      requirement:"Provide inspection & test report before energization.", drawing:"E-101 · Feeder Routing",
       submittals:"Approved", rfisClear:true, preInstall:true,
       evidenceId:"F113", governingRevDate:day(-1)+"T00:00", // design change landed AFTER the evidence was recorded
       note:"Engineering change notice ECN-07 revised the routing drawing after this evidence was recorded." },
     { spec:"03 30 00", name:"Slab-on-Grade Concrete", building:"B1",
+      requirement:"Mix design submittal required before any pour.", drawing:"S-201 · Foundation Plan",
       submittals:"Pending", rfisClear:true, preInstall:true,
       evidenceId:null, governingRevDate:day(-30)+"T00:00",
       note:"Mix design submittal still pending — package can't open regardless of inspection status." },
     { spec:"23 21 00", name:"Chilled Water Distribution", building:"B2",
+      requirement:"Pressure test witnessed by AHJ before insulation.", drawing:"M-301 · Piping Plan",
       submittals:"Approved", rfisClear:true, preInstall:true,
       evidenceId:"F114", governingRevDate:day(-30)+"T00:00",
       note:"" },
     { spec:"26 05 05", name:"Grounding & Bonding", building:"B1",
+      requirement:"Ground resistance test required before backfill.", drawing:"E-150 · Grounding Plan",
       submittals:"Approved", rfisClear:true, preInstall:true,
       evidenceId:null, governingRevDate:day(-30)+"T00:00",
       note:"Prerequisites clear — awaiting the scheduled inspection to close the gate." }
   ];
+
+  // The change log. Most bulletins land, get absorbed, and nothing downstream
+  // notices — ECN-02 and ECN-05 both predate every inspection on file, so they
+  // never flip a gate. ECN-07 lands AFTER MV Feeder Installation's evidence was
+  // recorded, which is what re-locks that one gate. Selecting a bulletin below
+  // re-runs computeGate_() for exactly the packages it touches.
+  var BULLETINS=[
+    { id:"ECN-02", date:day(-30), title:"Site utility realignment", specs:["03 30 00","23 21 00"], drawings:["S-201 · Foundation Plan","M-301 · Piping Plan"] },
+    { id:"ECN-05", date:day(-15), title:"Revise AHJ witness requirement — pressure tests", specs:["23 21 00"], drawings:["M-301 · Piping Plan"] },
+    { id:"ECN-07", date:day(-1),  title:"Reroute MV feeder around new transformer pad", specs:["26 05 00"], drawings:["E-101 · Feeder Routing"] }
+  ];
+  var selectedBulletin=null;
 
   function findEvidence_(id){ return DATA.right.concat(DATA.left).filter(function(r){return r.id===id;})[0]; }
 
@@ -393,17 +432,22 @@
     if(!right.length)Rt.appendChild(mkEmpty('Nothing scheduled.'));
     right.forEach(function(r){Rt.appendChild(card(r,'right'));});
 
+    drawBulletins();
     drawGates();
+    drawSummary();
   }
   function mkEmpty(t){var d=document.createElement('div');d.className='empty';d.textContent=t;return d;}
 
   function gitem(on,label){return '<div class="gitem '+(on?'on':'off')+'"><span class="b">'+(on?'✓':'')+'</span><span class="k">'+label+'</span></div>';}
   function drawGates(){
     var wrap=document.getElementById('gates'); wrap.innerHTML='';
+    var hlSpecs = selectedBulletin ? selectedBulletin.specs : null;
     WORK_PACKAGES.forEach(function(wp){
       var g=computeGate_(wp);
       var pillMap={blocked:'Blocked',ready:'Ready',stale:'Reverify',open:'Open'};
-      var card=document.createElement('div'); card.className='gate '+(g.state==='blocked'?'blocked':g.state==='stale'?'stale':'');
+      var isHl = hlSpecs && hlSpecs.indexOf(wp.spec)!==-1;
+      var card=document.createElement('div');
+      card.className='gate '+(g.state==='blocked'?'blocked':g.state==='stale'?'stale':'')+(isHl?' hl':'');
       var html='<div class="row1"><div><div class="spec">'+esc(wp.spec)+' · '+esc(wp.building)+'</div>'+
         '<div class="name">'+esc(wp.name)+'</div></div><span class="gpill '+g.state+'">'+pillMap[g.state]+'</span></div>'+
         '<div class="glist">'+
@@ -411,11 +455,39 @@
           gitem(wp.rfisClear,'RFIs resolved')+
           gitem(wp.preInstall,'Pre-install meeting held')+
           gitem(g.state==='open','Inspection evidence current')+
-        '</div>';
+        '</div>'+
+        '<div class="req">'+esc(wp.requirement)+'</div>'+
+        '<div class="dwg">Governing drawing: '+esc(wp.drawing)+'</div>';
       var note = g.state==='stale' ? wp.note : (g.state==='blocked'?wp.note:'');
       if(note) html+='<div class="gnote'+(g.state==='blocked'?' stop':'')+'">'+ (g.state==='stale'?'⟲ ':'⚠ ') +esc(note)+'</div>';
       card.innerHTML=html; wrap.appendChild(card);
     });
+  }
+
+  function drawBulletins(){
+    var wrap=document.getElementById('bulletins'); wrap.innerHTML='';
+    BULLETINS.forEach(function(b){
+      var el=document.createElement('div');
+      el.className='bull'+(selectedBulletin===b?' sel':'');
+      el.innerHTML='<span class="bdate">'+esc(b.date)+'</span><span class="id">'+esc(b.id)+'</span>'+
+        '<div class="btitle">'+esc(b.title)+'</div>';
+      el.onclick=function(){ selectedBulletin = (selectedBulletin===b) ? null : b; drawBulletins(); drawGates(); drawSummary(); };
+      wrap.appendChild(el);
+    });
+  }
+
+  function drawSummary(){
+    var el=document.getElementById('bullSummary');
+    if(!selectedBulletin){ el.className='bull-summary'; el.innerHTML=''; return; }
+    var b=selectedBulletin;
+    var affected=WORK_PACKAGES.filter(function(wp){return b.specs.indexOf(wp.spec)!==-1;});
+    var parts=affected.map(function(wp){
+      var g=computeGate_(wp); var lbl={blocked:'Blocked',ready:'Ready',stale:'now Reverify',open:'still Open — evidence predates this change'}[g.state];
+      return '<b>'+esc(wp.name)+'</b> ('+lbl+')';
+    });
+    el.className='bull-summary show';
+    el.innerHTML='<b>'+esc(b.id)+'</b> ('+esc(b.date)+') revised '+esc(b.drawings.join(', '))+' — touches '+
+      affected.length+' work package'+(affected.length===1?'':'s')+': '+parts.join(', ')+'.';
   }
   function stat(v,label,sub,warn){return '<div class="stat'+(warn?' warn':'')+'"><span class="v">'+v+'</span><span class="lbl">'+label+'</span><span class="sub">'+sub+'</span></div>';}
 

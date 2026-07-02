@@ -7,8 +7,9 @@ scope of work.
 
 **▶ Live interactive demo:** open [`index.html`](index.html) in any browser — no build step, no server,
 no dependencies, works offline. All data is synthetic. Assign a request, walk the sign-off chain, watch
-the conflict scan flag two 2 PM requests in different buildings, and scroll down to the **work package
-gates** — one of them is locked again because a design change outdated its evidence.
+the conflict scan flag two 2 PM requests in different buildings — then scroll to the **change timeline**
+and click an engineering change notice: watch it highlight exactly which work package it just re-locked,
+and why.
 
 ---
 
@@ -56,19 +57,29 @@ the conflict scan.
 ## Beyond scheduling: the compliance backbone
 
 The scheduler is the front door. What makes it more than a calendar is what the inspection evidence
-*feeds*: a work package can't open for construction until a chain of prerequisites is satisfied —
+*feeds*, and what actually drives all of it: **Division 1 of the spec**. Every work package traces back
+to one Division 1 requirement, and every requirement gates a chain of prerequisites before it can open —
 
 ```
-Spec requirement → Submittal approved → RFIs resolved → Pre-install meeting held → Work package gate
+Div 1 requirement → Submittal approved → RFIs resolved → Pre-install meeting held → Work package gate
 ```
 
-and an inspection is one of the gate's required proofs. That's a checklist. The part that's actually
-hard is this: **engineering changes happen mid-project**, and when one revises the drawing that governs
-a work package, any inspection recorded *before* that revision no longer proves anything — the gate
-re-locks until the work is re-inspected against the current drawing. Miss that, and a passed inspection
-quietly certifies work against a design that no longer exists.
+— with an inspection as one of the gate's required proofs. On its own, that's a checklist. What makes it
+a *system* is Division 1 doing double duty as a **cross-reference database**: every spec line already
+knows which drawing governs it, which submittal satisfies it, which work package it gates, and which
+inspection proves it. That join is what makes the next part possible.
 
-The demo's **Work Package Gates** panel shows all four states this produces:
+**The hard part: engineering changes happen mid-project.** Change control lands an engineering change
+notice that revises the drawing governing a work package — and every spec line joined to that drawing
+picks up the change automatically, because the reference already existed. Any inspection recorded
+*before* that revision date no longer proves anything against the current design; the gate re-locks
+until the work is re-inspected. Miss that, and a passed inspection quietly certifies work against a
+design that no longer exists.
+
+The demo's **change timeline** is that cross-reference made visible. Select an engineering change notice
+and it shows, immediately, every work package it touches and what happened to each one — not by
+re-deriving anything, just by walking the join that was already there. The **work package gates** below
+it show the same data in its resting state, in all four outcomes:
 
 | State | Meaning |
 |---|---|
@@ -77,9 +88,14 @@ The demo's **Work Package Gates** panel shows all four states this produces:
 | **Reverify** | Inspection evidence exists, but a later design change revised the governing drawing — the gate re-locked. |
 | **Open** | Every prerequisite is satisfied and the evidence on file postdates the current drawing revision. |
 
-This staleness cascade was the actual reason the production system existed: not "can we schedule this
-inspection" but "can we prove, at any moment, exactly which drawing revision every piece of installed
-work was verified against."
+This is the actual reason the production system existed: not "can we schedule this inspection" but "can
+we prove, at any moment, exactly which drawing revision every piece of installed work was verified
+against" — for an entire project, without a compliance team assembling that answer by hand.
+
+One more thing this buys, once the spine is live from kickoff: **closeout stops being a scramble.** A
+turnover package or a commissioning checklist is just a query against data that's already there — every
+submittal, drawing revision, and inspection accumulated daily instead of reconstructed in the last week
+of the project.
 
 ## Design notes
 
@@ -99,10 +115,14 @@ large data-center project, where formal inspections across three buildings all r
 municipal inspector. All client identifiers, personnel, contractor names, project data, and integration
 credentials have been removed; the project, people, and companies in the demo are invented.
 
-The production version ran on Google Apps Script + Google Sheets and ingested inspection requests
-automatically from the project's construction-management platform. See
-[`apps-script/`](apps-script/) for the genericized server-side engine (request parser + conflict
-detection) with a configuration layer in place of the original hard-wired constants.
+The production version ran on Google Apps Script + Google Sheets and ingested inspection requests, RFIs,
+submittals, and drawing revisions automatically from the project's construction-management platform. The
+spec cross-reference itself was prototyped in Python — fast to iterate on while the parsing rules for a
+35,000-line spec book were still being worked out — then rebuilt in Apps Script so it could run natively
+and autonomously inside a Google Workspace environment that didn't allow external AI tools or APIs. See
+[`apps-script/`](apps-script/) for the genericized server-side engine (conflict detection, sign-off
+state machine, and the work-package gate logic) with a configuration layer in place of the original
+hard-wired constants.
 
 ## License
 
