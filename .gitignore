@@ -1,0 +1,18 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Node (if tooling is ever added)
+node_modules/
+npm-debug.log*
+
+# Local env / secrets — never commit
+.env
+.env.*
+*.local
+
+# Nothing from any other project should ever land here
+/scratchpad/
