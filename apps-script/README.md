@@ -11,8 +11,9 @@ any one client via a [`Config.gs`](Config.gs) layer.
 | [`WorkPackageGate.gs`](WorkPackageGate.gs) | The compliance backbone: `computeGateStatus_()` gates a work package on submittals/RFIs/meeting/inspection evidence, and `reassessAffectedPackages_()` runs the staleness cascade when a drawing revision lands. |
 | [`XlsxImport.gs`](XlsxImport.gs) | Reads a construction-management platform's `.xlsx` export with no external library — unzips it, parses the shared-string table and cell grid, and resolves hyperlinked cells by joining the sheet's `<hyperlink>` elements against the worksheet's *relationships* XML. Covered by the tests described below. |
 | [`BootstrapDeploy.gs`](BootstrapDeploy.gs) | Self-configuring first run: resolves the database Spreadsheet and Drive folder **by name**, not by ID, so a copy of this project works on a fresh Google account with zero config edits. |
+| [`LessonsLearned.gs`](LessonsLearned.gs) | Mines a project's own inspection-failure history for recurring patterns, promotes a pattern to a lesson once it clears a recurrence threshold, and flags which lessons are urgent because that trade's scope hasn't started elsewhere on the project yet. |
 
-## The five things worth reading
+## The six things worth reading
 
 **`travelConflicts_()`** — the whole reason the tool exists. Scheduled inspections for the single
 authority inspector are grouped by day and walked in time order; each adjacent pair is flagged when the
@@ -43,6 +44,16 @@ every column after it; and the `<Relationship>` element's attribute order is not
 exports write `Target` *before* `Id`, so a regex anchored on `Id` preceding `Target` matches nothing
 against an actual file. Both are covered by a small Node-based test harness (two hand-built fixtures —
 one shared-string, one inline-string — with a sparse row and two hyperlinked cells) before this shipped.
+
+**`promoteToLessons_()` / `carryForwardStatus_()`** — the honest scope of what's automated here. Finding
+which failure patterns are worth a QA professional's attention is mechanical: tally by pattern, promote
+once it clears a recurrence threshold. Writing the actual lesson — root cause, preventive action — is
+still a human judgment call, and this doesn't pretend otherwise. What it automates is the second, equally
+important judgment call: given a build-progress map (which trade has started where), is this lesson
+merely informative or is it still possible to act on before the mistake repeats. A pattern from a trade
+that hasn't started its scope in another building yet is worth far more than the same pattern from a
+trade that already finished there — and that comparison is exactly what a person re-reading a static
+spreadsheet is least likely to make consistently across every lesson, every building, every week.
 
 ## Two implementation notes from production
 

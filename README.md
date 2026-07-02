@@ -8,8 +8,8 @@ scope of work.
 **▶ Live interactive demo:** open [`index.html`](index.html) in any browser — no build step, no server,
 no dependencies, works offline. All data is synthetic. Assign a request, walk the sign-off chain, watch
 the conflict scan flag two 2 PM requests in different buildings — then scroll to the **change timeline**
-and click an engineering change notice: watch it highlight exactly which work package it just re-locked,
-and why.
+and click an engineering change notice to trace what it re-locks, and past that to the **lessons learned
+register**, where every recurring failure pattern gets a live, per-building carry-forward call.
 
 ---
 
@@ -97,6 +97,34 @@ turnover package or a commissioning checklist is just a query against data that'
 submittal, drawing revision, and inspection accumulated daily instead of reconstructed in the last week
 of the project.
 
+## Lessons learned: the part that's actually repeatable across projects
+
+Everything above is specific to one project's spec and one project's cross-references. The **lessons
+learned register** is the one piece that's a pure function of two generic inputs — a failure tally and a
+build-progress map — which is what makes it the most literally "take this to the next job" part of the
+whole system.
+
+Quality-requirements specs commonly obligate incorporating lessons learned into ongoing trade training.
+In practice that usually means a QA lead reading a failure log by hand and hoping the pattern that
+mattered sticks. This does the mining mechanically instead:
+
+1. **Tally** every classified inspection failure by pattern (category, trade, and what happened).
+2. **Promote** a pattern to a lesson once it clears a recurrence threshold — enough occurrences to be a
+   real trend, not noise from one bad week.
+3. **Check every lesson against what hasn't started yet.** A pattern from a trade whose scope is already
+   finished in every other building is merely informative. The same pattern from a trade that hasn't
+   *started* its scope somewhere else yet is the highest-value thing in the whole register — the
+   preventive action can still land before the mistake has a chance to repeat.
+
+The demo's panel shows exactly this: patterns sorted by recurrence, the highest-frequency ones flagged
+critical, and a per-building **Actionable now** / **Verify carried over** chip on every lesson — computed
+live from a small build-progress model, not hand-typed per lesson. One pattern is deliberately left below
+the promotion threshold to show the filter actually filters.
+
+What's deliberately *not* automated: the root cause and the preventive-action text are still a QA
+professional's judgment call. That's the honest boundary — this finds where the judgment is worth
+spending, it doesn't replace it.
+
 ## Design notes
 
 - **Information design over decoration.** It's a board that gets *operated*, not read. Summary counts up
@@ -137,6 +165,7 @@ asked about directly.
 | **Inspection Scheduler** *(this repo)* | Travel-conflict scheduling, sign-off chain, change timeline, work package gates |
 | **XLSX / hyperlink import** *(this repo, [`apps-script/XlsxImport.gs`](apps-script/XlsxImport.gs))* | Parses the CM platform's spreadsheet exports with no external library, including hyperlink resolution via the workbook's relationships XML |
 | **Bootstrap / deploy** *(this repo, [`apps-script/BootstrapDeploy.gs`](apps-script/BootstrapDeploy.gs))* | Name-based Drive resource discovery — the same script deploys to a new Google account with zero hardcoded IDs |
+| **Lessons learned** *(this repo, [`apps-script/LessonsLearned.gs`](apps-script/LessonsLearned.gs))* | Mines a failure tally for recurring patterns and flags which ones are still actionable elsewhere on the project |
 | Sub Portal | External subcontractor view — reschedule, hold, withdraw an inspection request without internal-tool access |
 | MEP PM Board | Trade coordination view for mechanical/electrical/plumbing scope |
 | 3-Week Look-Ahead | Rolling schedule view scoped to near-term work |

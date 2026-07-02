@@ -147,6 +147,23 @@
     padding:9px 12px;margin:2px 0 16px;display:none}
   .bull-summary.show{display:block}
   .bull-summary b{color:var(--steel)}
+
+  /* lessons learned */
+  .ll-list{display:flex;flex-direction:column;gap:10px}
+  .ll{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:12px 15px;position:relative}
+  .ll.crit{border-color:#e8b3aa}
+  .ll.crit::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:3px;background:var(--stop)}
+  .ll .row1{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+  .ll .tag{font-family:var(--mono);font-size:10.5px;color:var(--mut)}
+  .ll .cnt{font-family:var(--mono);font-weight:700;font-size:15px;color:var(--stop)}
+  .ll .cnt.ok{color:var(--mut)}
+  .ll .pattern{font-weight:650;font-size:14px;margin-top:3px;text-wrap:balance}
+  .ll .action{font-size:12.5px;color:#3f4d5a;margin-top:7px;padding-top:7px;border-top:1px dashed var(--line2)}
+  .ll .cf{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+  .cfchip{font-size:10.5px;font-weight:650;text-transform:uppercase;letter-spacing:.03em;padding:3px 9px;border-radius:20px}
+  .cfchip.actionable{background:var(--stop-tint);color:var(--stop)}
+  .cfchip.review{background:var(--sched-tint);color:var(--sched)}
+  .ll-filtered{color:var(--mut);font-size:12px;font-style:italic;padding:8px 4px}
 </style>
 
 <div class="ib-root">
@@ -208,6 +225,15 @@
       pre-install meeting was held. And if an engineering change revises the governing drawing after an
       inspection was recorded, that evidence goes stale — the gate re-locks until it's redone.</p>
     <div class="gates-grid" id="gates"></div>
+  </div>
+
+  <div class="gates-sec">
+    <div class="gates-h"><h2>Lessons learned register</h2></div>
+    <p class="gates-sub">Every recurring inspection-failure pattern from this building gets tallied. Once
+      a pattern clears a threshold, it's promoted from noise to a lesson — and checked against every other
+      building to see whether that trade's scope has started there yet. Not started = the highest-value
+      carry-forward, because the preventive action can still land before the mistake repeats.</p>
+    <div class="ll-list" id="lessons"></div>
   </div>
 
   <div class="foot">Demo build · synthetic data, no client information. Conflict detection accounts for travel time between yard zones — one inspector can't be two places at once.</div>
@@ -299,6 +325,63 @@
     { id:"ECN-07", date:day(-1),  title:"Reroute MV feeder around new transformer pad", specs:["26 05 00"], drawings:["E-101 · Feeder Routing"] }
   ];
   var selectedBulletin=null;
+
+  // ── lessons learned: pattern mining + carry-forward ──────────────────
+  // Pre-aggregated failure counts per (category, trade, pattern, building) —
+  // the output of a checklist-question rollup, not raw per-inspection rows.
+  // One row (bearing stratum) is deliberately below the promotion threshold,
+  // to show the filter actually filters rather than showing everything.
+  var LESSON_MIN_COUNT=5, LESSON_CRITICAL_COUNT=25;
+  var FAILURE_TALLY=[
+    { category:"Process/Admin", trade:"Keystone Mechanical", pattern:"Storage checklist closed without contractor review + procedure attached", building:"B1", count:61,
+      action:"Make contractor review + procedure attachment a mandatory close-out gate on every storage checklist; reject incomplete submissions back to the trade." },
+    { category:"Non-Compliance", trade:"Ironline Electric", pattern:"Tamper seal broken or missing on delivered equipment", building:"B1", count:43,
+      action:"Add a tamper-seal verification hold point at receiving — any unit with a broken or missing seal is quarantined and flagged before storage." },
+    { category:"Non-Compliance", trade:"Keystone Mechanical", pattern:"Manufacturer storage/handling requirements not met", building:"B1", count:38,
+      action:"Stand up a spec-compliant, environmentally-controlled storage area before equipment arrives; assign a storage-condition owner." },
+    { category:"Process/Admin", trade:"Ironline Electric", pattern:"Required install photo not uploaded to the record", building:"B1", count:29,
+      action:"Make the equipment photo a required attachment to close the inspection form — no photo, no close." },
+    { category:"Non-Compliance", trade:"Corebuild Concrete", pattern:"Formwork not level/plumb/square before pour", building:"B1", count:24,
+      action:"Single consolidated pre-pour checklist (level/plumb/square + bracing + elevation) signed off before concrete is ordered." },
+    { category:"Non-Compliance", trade:"Terrafirma Civil", pattern:"Third-party inspection not completed prior to backfill", building:"B1", count:19,
+      action:"No-backfill-without-signoff hold point — the crew cannot proceed until the inspection record is logged." },
+    { category:"Non-Compliance", trade:"Terrafirma Civil", pattern:"Backfill material/compaction not verified against spec", building:"B1", count:14,
+      action:"Pre-qualify backfill material and require a compaction test record per lift before the next lift proceeds." },
+    { category:"Reference-Miss", trade:"Summit Steel", pattern:"Quality observation recorded without governing spec/drawing reference", building:"B1", count:11,
+      action:"Make the spec/submittal/drawing reference a required field on every quality observation — no reference, no submit." },
+    { category:"Non-Compliance", trade:"Ironline Electric", pattern:"Nameplate/asset tag not matched to approved submittal", building:"B1", count:9,
+      action:"Cross-check nameplate ratings and asset tags against the approved submittal at receiving; mismatch raises an alert before install." },
+    { category:"Non-Compliance", trade:"Redline Fire Protection", pattern:"Required weather protection not staged before install", building:"B1", count:7,
+      action:"Pre-stage weather protection as a precondition to the activity, not a reactive step after exposure." },
+    { category:"Non-Compliance", trade:"Corebuild Concrete", pattern:"Bearing stratum not confirmed by geotech before pour", building:"B1", count:4,
+      action:"" }
+  ];
+  // which trades' scope has already started in which building — drives the
+  // ACTIONABLE vs REVIEW carry-forward call for every lesson below
+  var SCOPE_STARTED={
+    B2:["Ironline Electric","Redline Fire Protection"],
+    B3:[]
+  };
+
+  function promoteToLessons_(tally){
+    return tally.filter(function(r){return r.count>=LESSON_MIN_COUNT;})
+      .map(function(r){return Object.assign({},r,{critical:r.count>=LESSON_CRITICAL_COUNT});})
+      .sort(function(a,b){return b.count-a.count;});
+  }
+  function carryForwardStatus_(lesson, otherBuildings){
+    var status={};
+    otherBuildings.forEach(function(b){
+      var started=(SCOPE_STARTED[b]||[]).indexOf(lesson.trade)!==-1;
+      status[b]=started?'REVIEW':'ACTIONABLE';
+    });
+    return status;
+  }
+  function buildLessonsRegister_(tally, buildings){
+    return promoteToLessons_(tally).map(function(lesson){
+      var others=buildings.filter(function(b){return b!==lesson.building;});
+      return Object.assign({},lesson,{carryForward:carryForwardStatus_(lesson,others)});
+    });
+  }
 
   function findEvidence_(id){ return DATA.right.concat(DATA.left).filter(function(r){return r.id===id;})[0]; }
 
@@ -435,6 +518,7 @@
     drawBulletins();
     drawGates();
     drawSummary();
+    drawLessons();
   }
   function mkEmpty(t){var d=document.createElement('div');d.className='empty';d.textContent=t;return d;}
 
@@ -474,6 +558,31 @@
       el.onclick=function(){ selectedBulletin = (selectedBulletin===b) ? null : b; drawBulletins(); drawGates(); drawSummary(); };
       wrap.appendChild(el);
     });
+  }
+
+  function drawLessons(){
+    var wrap=document.getElementById('lessons'); wrap.innerHTML='';
+    var filteredOut=FAILURE_TALLY.length - promoteToLessons_(FAILURE_TALLY).length;
+    var register=buildLessonsRegister_(FAILURE_TALLY, ["B1","B2","B3"]);
+    register.forEach(function(l){
+      var el=document.createElement('div'); el.className='ll'+(l.critical?' crit':'');
+      var cfHtml=Object.keys(l.carryForward).map(function(b){
+        var v=l.carryForward[b];
+        return '<span class="cfchip '+(v==='ACTIONABLE'?'actionable':'review')+'">'+b+': '+(v==='ACTIONABLE'?'Actionable now':'Verify carried over')+'</span>';
+      }).join('');
+      el.innerHTML=
+        '<div class="row1"><span class="tag">'+esc(l.building)+' · '+esc(l.category)+' · '+esc(l.trade)+'</span>'+
+        '<span class="'+(l.critical?'cnt':'cnt ok')+'">'+l.count+' fails</span></div>'+
+        '<div class="pattern">'+esc(l.pattern)+'</div>'+
+        (l.action?'<div class="action">'+esc(l.action)+'</div>':'')+
+        '<div class="cf">'+cfHtml+'</div>';
+      wrap.appendChild(el);
+    });
+    if(filteredOut>0){
+      var note=document.createElement('div'); note.className='ll-filtered';
+      note.textContent=filteredOut+' pattern'+(filteredOut===1?'':'s')+' below the '+LESSON_MIN_COUNT+'-recurrence threshold — logged, but not promoted to a lesson yet.';
+      wrap.appendChild(note);
+    }
   }
 
   function drawSummary(){
