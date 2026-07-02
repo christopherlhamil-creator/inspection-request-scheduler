@@ -206,6 +206,20 @@
   .util-plan{display:flex;flex-direction:column;gap:8px;list-style:none;padding-left:0;margin:0}
   .util-plan li{font-size:13px;line-height:1.5}
   .util-plan .n{font-family:var(--mono);color:var(--steel);font-weight:700;margin-right:6px}
+
+  /* template parity audit */
+  table.parity{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px}
+  table.parity th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);
+    font-weight:600;padding:6px 10px;border-bottom:1px solid var(--line)}
+  table.parity td{padding:7px 10px;border-bottom:1px solid var(--line2);vertical-align:top}
+  table.parity td.dim{font-weight:650}
+  table.parity td.dim .note{font-weight:400;color:var(--mut);font-size:11.5px;font-style:italic;margin-top:2px}
+  table.parity td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+  .ppill{font-size:10.5px;font-weight:650;text-transform:uppercase;letter-spacing:.02em;padding:3px 8px;border-radius:20px;white-space:nowrap}
+  .ppill.drift{background:var(--stop-tint);color:var(--stop)}
+  .ppill.not_built{background:var(--hold-tint);color:var(--hold)}
+  .ppill.subset{background:var(--sched-tint);color:var(--sched)}
+  .ppill.parity{background:var(--go-tint);color:var(--go)}
 </style>
 
 <div class="ib-root">
@@ -289,6 +303,20 @@
       <tbody id="utilBody"></tbody>
     </table>
     <ol class="util-plan" id="utilPlan"></ol>
+  </div>
+
+  <div class="gates-sec">
+    <div class="gates-h"><h2>Template parity audit</h2></div>
+    <p class="gates-sub">Three near-identical buildings, one canonical configuration — but "building B has
+      fewer templates than building A" is two different problems a raw count can't tell apart. Either B
+      just hasn't finished cloning A's set yet (a clean subset — safe to clone the rest), or B's team
+      rebuilt things by hand instead of cloning (drift — entries that don't match anything in A, and have
+      to be reconciled <em>before</em> cloning anything else, or the clone compounds the mess).</p>
+    <table class="parity">
+      <thead><tr><th>Dimension</th><th>Building</th><th>Canonical (B1)</th><th>Count</th><th>Status</th></tr></thead>
+      <tbody id="parityBody"></tbody>
+    </table>
+    <ol class="util-plan" id="parityPlan"></ol>
   </div>
 
   <div class="gates-sec">
@@ -506,6 +534,44 @@
       read:"Daily reporting not captured in the system of record at all." }
   ];
 
+  // ── template parity audit ────────────────────────────────────────────
+  var PARITY_RATIO=0.95;
+  function classifyTemplateParity_(row){
+    if(row.count===0 && row.canonicalCount>0) return 'NOT_BUILT';
+    var unique=row.count-row.sharedWithCanonical;
+    if(unique>0) return 'DRIFT';
+    var ratio=row.canonicalCount>0 ? row.count/row.canonicalCount : 1;
+    return ratio>=PARITY_RATIO ? 'PARITY' : 'SUBSET';
+  }
+  function buildParityReport_(dimensions){
+    var order={DRIFT:0, NOT_BUILT:1, SUBSET:2, PARITY:3};
+    return dimensions.map(function(d){ return Object.assign({}, d, {status: classifyTemplateParity_(d)}); })
+      .sort(function(a,b){return order[a.status]-order[b.status];});
+  }
+
+  var PARITY_ROWS=[
+    { dimension:"Form templates", building:"B2", canonicalCount:680, count:50, sharedWithCanonical:20,
+      note:"30 unique templates — hand-rebuilt instead of cloned." },
+    { dimension:"Form templates", building:"B3", canonicalCount:680, count:15, sharedWithCanonical:15,
+      note:"Clean subset, just incomplete." },
+    { dimension:"Issue type picklist", building:"B2", canonicalCount:24, count:18, sharedWithCanonical:18,
+      note:"Missing 6 values present in B1 — none extra." },
+    { dimension:"Issue type picklist", building:"B3", canonicalCount:24, count:18, sharedWithCanonical:18,
+      note:"Same 6 values missing as B2." },
+    { dimension:"Root cause list", building:"B2", canonicalCount:56, count:56, sharedWithCanonical:56, note:"" },
+    { dimension:"Root cause list", building:"B3", canonicalCount:56, count:55, sharedWithCanonical:55, note:"" },
+    { dimension:"Asset categories", building:"B2", canonicalCount:390, count:9, sharedWithCanonical:0,
+      note:"9 generic stub categories — none match the curated B1 set." },
+    { dimension:"Asset categories", building:"B3", canonicalCount:390, count:9, sharedWithCanonical:0,
+      note:"Same generic stub set as B2, same problem." },
+    { dimension:"Zone / location tree", building:"B2", canonicalCount:85, count:9, sharedWithCanonical:9,
+      note:"Top-level nodes only, clean subset." },
+    { dimension:"Zone / location tree", building:"B3", canonicalCount:85, count:0, sharedWithCanonical:0,
+      note:"No real zone structure — a single placeholder root node." },
+    { dimension:"Project roles (account-level)", building:"B2", canonicalCount:170, count:170, sharedWithCanonical:170, note:"" },
+    { dimension:"Project roles (account-level)", building:"B3", canonicalCount:170, count:170, sharedWithCanonical:170, note:"" }
+  ];
+
   // ── lessons learned: pattern mining + carry-forward ──────────────────
   // Pre-aggregated failure counts per (category, trade, pattern, building) —
   // the output of a checklist-question rollup, not raw per-inspection rows.
@@ -697,6 +763,7 @@
 
     drawCrosswalk();
     drawUtilization();
+    drawParity();
     drawBulletins();
     drawGates();
     drawSummary();
@@ -804,6 +871,35 @@
       'Load the master schedule and activate Reviews so approvals and milestones live in the system of record instead of scattered outside it.'
     ];
     var ol=document.getElementById('utilPlan'); ol.innerHTML='';
+    plan.forEach(function(p,i){
+      var li=document.createElement('li');
+      li.innerHTML='<span class="n">'+(i+1)+'</span>'+esc(p);
+      ol.appendChild(li);
+    });
+  }
+
+  function drawParity(){
+    var report=buildParityReport_(PARITY_ROWS);
+    var body=document.getElementById('parityBody'); body.innerHTML='';
+    report.forEach(function(r){
+      var tr=document.createElement('tr');
+      var noteHtml=r.note?'<div class="note">'+esc(r.note)+'</div>':'';
+      tr.innerHTML=
+        '<td class="dim">'+esc(r.dimension)+noteHtml+'</td>'+
+        '<td>'+esc(r.building)+'</td>'+
+        '<td class="num">'+r.canonicalCount.toLocaleString()+'</td>'+
+        '<td class="num">'+r.count.toLocaleString()+'</td>'+
+        '<td><span class="ppill '+r.status.toLowerCase()+'">'+r.status.replace(/_/g,' ')+'</span></td>';
+      body.appendChild(tr);
+    });
+    var plan=[
+      'Reconcile the DRIFT dimensions first — merge B2\'s 30 hand-built form templates and both buildings\' stub asset categories into the canonical names. Cloning onto a diverged config just compounds the mess.',
+      'Clone the zone/location tree to B3 (currently zero) and finish B2\'s. Nothing else can be located, filtered, or rolled up by area until this exists.',
+      'Clone the reconciled form-template library to B3 — it\'s already a clean subset, so this is a straight copy operation.',
+      'Push the issue-type picklist to both buildings to restore the 6 missing values.',
+      'Stand up asset categories and the asset register in B2/B3 from the reconciled canonical set — the commissioning backbone has the longest lead time, so it should start as soon as the categories are clean.'
+    ];
+    var ol=document.getElementById('parityPlan'); ol.innerHTML='';
     plan.forEach(function(p,i){
       var li=document.createElement('li');
       li.innerHTML='<span class="n">'+(i+1)+'</span>'+esc(p);

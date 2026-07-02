@@ -7,10 +7,11 @@ scope of work.
 
 **▶ Live interactive demo:** open [`index.html`](index.html) in any browser — no build step, no server,
 no dependencies, works offline. All data is synthetic. Try the **section crosswalk** normalizer with a
-messy code of your own, check the **platform utilization audit** for a prioritized "fix this first" plan,
-watch the **change timeline** re-lock a work package, assign an inspection and walk its sign-off chain,
-watch the conflict scan flag two 2 PM requests in different buildings, and check the **lessons learned
-register** for a live, per-building carry-forward call on every recurring failure.
+messy code of your own, check the **platform utilization audit** and the **template parity audit** for
+two different prioritized "fix this first" plans, watch the **change timeline** re-lock a work package,
+assign an inspection and walk its sign-off chain, watch the conflict scan flag two 2 PM requests in
+different buildings, and check the **lessons learned register** for a live carry-forward call on every
+recurring failure.
 
 ---
 
@@ -91,6 +92,25 @@ The output isn't just a red/yellow/green table — it's a **priority-ordered fix
 pipeline bug that's making a healthy module look abandoned goes first (zero building work, unblocks
 everything downstream of it), then the single structural fix with the most leverage, then the registers
 nothing else can be built on top of without.
+
+## Two failure modes, one raw count: the template parity audit
+
+Multi-building projects get built from one canonical configuration, and "building B has fewer templates
+than building A" sounds like a single problem. It isn't. The **template parity audit** panel exists
+because those two failure modes need opposite fixes and a raw count can't tell them apart:
+
+- **Subset** — B's templates are all a clean match against A's. Nobody's finished cloning yet. Fix: clone
+  the rest. Low risk, straightforward.
+- **Drift** — B has templates that don't match anything in A at all, because its team rebuilt or renamed
+  forms by hand instead of waiting for a clone. Fix: reconcile those unique entries into the canonical
+  names *first*. Clone on top of drift instead, and the duplicate, inconsistently-named templates become
+  permanent.
+
+The audit checks for drift before it ever computes a completeness percentage, because a small-but-clean
+subset and a large-but-half-matching mess can report the exact same "42% as many templates" number while
+needing entirely different responses. The output sorts drift to the top — reconcile that first — with a
+short reconciliation-then-clone plan below it, the same "priority list, not a red/green table" shape as
+the utilization audit above.
 
 ## Beyond scheduling: the compliance backbone
 
@@ -206,6 +226,7 @@ asked about directly.
 | **Lessons learned** *(this repo, [`apps-script/LessonsLearned.gs`](apps-script/LessonsLearned.gs))* | Mines a failure tally for recurring patterns and flags which ones are still actionable elsewhere on the project |
 | **Section crosswalk** *(this repo, [`apps-script/SectionCrosswalk.gs`](apps-script/SectionCrosswalk.gs))* | Reconciles inconsistent spec-section formats to one canonical key; coverage/orphan audit across source systems |
 | **Platform utilization audit** *(this repo, [`apps-script/UtilizationAudit.gs`](apps-script/UtilizationAudit.gs))* | Quantifies whether the platform is actually used the way the spec mandates; a priority-ordered fix list, not just a red/green table |
+| **Template parity audit** *(this repo, [`apps-script/TemplateParityAudit.gs`](apps-script/TemplateParityAudit.gs))* | Distinguishes an incomplete-but-clean config subset from genuine drift across near-identical building instances — the two need opposite fixes |
 | Sub Portal | External subcontractor view — reschedule, hold, withdraw an inspection request without internal-tool access |
 | MEP PM Board | Trade coordination view for mechanical/electrical/plumbing scope |
 | 3-Week Look-Ahead | Rolling schedule view scoped to near-term work |

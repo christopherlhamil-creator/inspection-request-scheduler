@@ -14,8 +14,9 @@ any one client via a [`Config.gs`](Config.gs) layer.
 | [`LessonsLearned.gs`](LessonsLearned.gs) | Mines a project's own inspection-failure history for recurring patterns, promotes a pattern to a lesson once it clears a recurrence threshold, and flags which lessons are urgent because that trade's scope hasn't started elsewhere on the project yet. |
 | [`SectionCrosswalk.gs`](SectionCrosswalk.gs) | The foundation everything else assumes: reconciles a spec section referenced in five inconsistent formats to one canonical key, refusing to guess on genuinely ambiguous input, then audits coverage and finds orphans in both directions. |
 | [`UtilizationAudit.gs`](UtilizationAudit.gs) | Turns "are we using our platform well?" into a quantified, prioritized answer: classifies each module's populated-record counts per building against what the spec mandates, distinguishing a real structural gap from normal project-phase tapering. |
+| [`TemplateParityAudit.gs`](TemplateParityAudit.gs) | Distinguishes two failure modes that look identical in a raw count across near-identical building instances: a clean, incomplete subset (safe to finish cloning) vs. drift (hand-rebuilt entries that must be reconciled before anything is cloned onto them). |
 
-## The eight things worth reading
+## The nine things worth reading
 
 **`travelConflicts_()`** — the whole reason the tool exists. Scheduled inspections for the single
 authority inspector are grouped by day and walked in time order; each adjacent pair is flagged when the
@@ -82,6 +83,18 @@ below the best one; transactional gaps only get flagged if the *best* building n
 all. Verified against 12 cases spanning every real-data pattern this needed to separate before it shipped
 — including the one that initially slipped through: a module tiny everywhere, which is a real
 account-wide gap, not a "some buildings are behind" gap.
+
+**`classifyTemplateParity_()`** — same species of judgment call as the utilization audit, applied to
+configuration instead of usage volume. "Building B has fewer form templates than building A" is not one
+problem, it's two, and a raw count alone can't distinguish them: B might just be an incomplete but clean
+subset of A's templates (safe — clone the rest), or B might have templates that don't match anything in
+A at all because its team rebuilt or renamed forms by hand instead of cloning (drift — those unique
+entries have to be reconciled *first*, or cloning on top of them locks in permanent duplicates). The
+function checks for drift before it ever computes a completeness ratio, because a small, clean subset and
+a large, half-matching mess would otherwise report as "similarly incomplete" when they need opposite
+fixes. Verified against 10 cases before shipping, including the one place two dimensions have the exact
+same failure shape (small count, zero overlap with canonical) for a different underlying reason than the
+large-count drift case.
 
 ## Two implementation notes from production
 
