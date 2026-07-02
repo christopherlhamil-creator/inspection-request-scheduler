@@ -101,6 +101,35 @@
   .legend{display:flex;gap:16px;flex-wrap:wrap;padding:10px 24px 2px;max-width:1360px;margin:0 auto;color:var(--mut);font-size:12px}
   .legend b{color:var(--ink)}
   @media(max-width:820px){.ib-wrap{grid-template-columns:1fr}.ib-stats{grid-template-columns:repeat(2,1fr)}}
+
+  /* work package gates */
+  .gates-sec{max-width:1360px;margin:6px auto 0;padding:22px 24px 0}
+  .gates-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:3px}
+  .gates-h h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+  .gates-sub{color:var(--mut);font-size:12.5px;margin:0 0 12px}
+  .gates-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}
+  .gate{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:13px 15px 14px;position:relative}
+  .gate.stale{border-color:#e8cf9a}
+  .gate.stale::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:3px;background:var(--hold)}
+  .gate.blocked::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:3px;background:var(--stop)}
+  .gate.blocked{border-color:#e8b3aa}
+  .gate .row1{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .gate .spec{font-family:var(--mono);font-size:11px;color:var(--mut)}
+  .gate .name{font-weight:650;font-size:14px;margin-top:2px;text-wrap:balance}
+  .gpill{font-size:10px;font-weight:650;text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:20px;white-space:nowrap}
+  .gpill.blocked{background:var(--stop-tint);color:var(--stop)}
+  .gpill.ready{background:var(--sched-tint);color:var(--sched)}
+  .gpill.stale{background:var(--hold-tint);color:var(--hold)}
+  .gpill.open{background:var(--go-tint);color:var(--go)}
+  .glist{margin-top:9px;display:flex;flex-direction:column;gap:5px}
+  .gitem{display:flex;align-items:center;gap:7px;font-size:12.5px}
+  .gitem .b{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--line);display:grid;place-items:center;font-size:9px;flex:none}
+  .gitem.on .b{background:var(--go);border-color:var(--go);color:#fff}
+  .gitem.off .b{background:#fff}
+  .gitem span.k{color:var(--ink)}
+  .gitem.off span.k{color:var(--mut)}
+  .gnote{font-size:12px;color:var(--hold);margin-top:9px;background:var(--hold-tint);border-radius:6px;padding:6px 8px}
+  .gnote.stop{color:var(--stop);background:var(--stop-tint)}
 </style>
 
 <div class="ib-root">
@@ -147,6 +176,15 @@
       <div class="pane-h"><h2>Scheduled inspections</h2><span class="n" id="nRight"></span></div>
       <div class="col" id="right"></div>
     </div>
+  </div>
+
+  <div class="gates-sec">
+    <div class="gates-h"><h2>Work package gates</h2></div>
+    <p class="gates-sub">Inspections aren't the end of the line — they're evidence that unlocks a scope of
+      work. A package can't open until its submittals are approved, RFIs are clear, and a pre-install
+      meeting was held. And if an engineering change later revises the governing drawing, any inspection
+      recorded against the old revision goes stale — the gate re-locks until it's redone.</p>
+    <div class="gates-grid" id="gates"></div>
   </div>
 
   <div class="foot">Demo build · synthetic data, no client information. Conflict detection accounts for travel time between yard zones — one inspector can't be two places at once.</div>
@@ -196,6 +234,44 @@
   ];
 
   var DATA={left:LEFT.slice(),right:SCHED.slice()};
+
+  // ── work package gates ────────────────────────────────────────────────
+  // A work package is a scope of work gated behind: submittals approved,
+  // RFIs resolved, a pre-install meeting held, and — the part that makes this
+  // more than a checklist — inspection evidence that postdates the *current*
+  // governing drawing revision. An engineering change revises a drawing;
+  // any inspection recorded before that date is stale and the gate re-locks
+  // until it's redone. This is the compliance backbone the scheduler feeds.
+  var WORK_PACKAGES=[
+    { spec:"26 05 00", name:"MV Feeder Installation", building:"B1",
+      submittals:"Approved", rfisClear:true, preInstall:true,
+      evidenceId:"F113", governingRevDate:day(-1)+"T00:00", // design change landed AFTER the evidence was recorded
+      note:"Engineering change notice ECN-07 revised the routing drawing after this evidence was recorded." },
+    { spec:"03 30 00", name:"Slab-on-Grade Concrete", building:"B1",
+      submittals:"Pending", rfisClear:true, preInstall:true,
+      evidenceId:null, governingRevDate:day(-30)+"T00:00",
+      note:"Mix design submittal still pending — package can't open regardless of inspection status." },
+    { spec:"23 21 00", name:"Chilled Water Distribution", building:"B2",
+      submittals:"Approved", rfisClear:true, preInstall:true,
+      evidenceId:"F114", governingRevDate:day(-30)+"T00:00",
+      note:"" },
+    { spec:"26 05 05", name:"Grounding & Bonding", building:"B1",
+      submittals:"Approved", rfisClear:true, preInstall:true,
+      evidenceId:null, governingRevDate:day(-30)+"T00:00",
+      note:"Prerequisites clear — awaiting the scheduled inspection to close the gate." }
+  ];
+
+  function findEvidence_(id){ return DATA.right.concat(DATA.left).filter(function(r){return r.id===id;})[0]; }
+
+  function computeGate_(wp){
+    if(wp.submittals!=="Approved"||!wp.rfisClear||!wp.preInstall) return {state:"blocked",label:"Blocked"};
+    var ev=wp.evidenceId&&findEvidence_(wp.evidenceId);
+    if(!ev||(ev.status!=="Inspected"&&ev.status!=="Super Bought Off"&&ev.status!=="AHJ Signed + Green Sticker"))
+      return {state:"ready",label:"Ready — awaiting inspection"};
+    var evDate=(ev.date||"")+"T"+(ev.time||"00:00");
+    if(evDate<wp.governingRevDate) return {state:"stale",label:"Needs re-inspection"};
+    return {state:"open",label:"Gate open"};
+  }
 
   // ── conflict scan (one inspector, travel-aware) ─────────────────────
   function toMin(h){var p=String(h).split(":");return (+p[0]||0)*60+(+p[1]||0);}
@@ -316,8 +392,31 @@
     var Rt=document.getElementById('right');Rt.innerHTML='';
     if(!right.length)Rt.appendChild(mkEmpty('Nothing scheduled.'));
     right.forEach(function(r){Rt.appendChild(card(r,'right'));});
+
+    drawGates();
   }
   function mkEmpty(t){var d=document.createElement('div');d.className='empty';d.textContent=t;return d;}
+
+  function gitem(on,label){return '<div class="gitem '+(on?'on':'off')+'"><span class="b">'+(on?'✓':'')+'</span><span class="k">'+label+'</span></div>';}
+  function drawGates(){
+    var wrap=document.getElementById('gates'); wrap.innerHTML='';
+    WORK_PACKAGES.forEach(function(wp){
+      var g=computeGate_(wp);
+      var pillMap={blocked:'Blocked',ready:'Ready',stale:'Reverify',open:'Open'};
+      var card=document.createElement('div'); card.className='gate '+(g.state==='blocked'?'blocked':g.state==='stale'?'stale':'');
+      var html='<div class="row1"><div><div class="spec">'+esc(wp.spec)+' · '+esc(wp.building)+'</div>'+
+        '<div class="name">'+esc(wp.name)+'</div></div><span class="gpill '+g.state+'">'+pillMap[g.state]+'</span></div>'+
+        '<div class="glist">'+
+          gitem(wp.submittals==='Approved','Submittals approved')+
+          gitem(wp.rfisClear,'RFIs resolved')+
+          gitem(wp.preInstall,'Pre-install meeting held')+
+          gitem(g.state==='open','Inspection evidence current')+
+        '</div>';
+      var note = g.state==='stale' ? wp.note : (g.state==='blocked'?wp.note:'');
+      if(note) html+='<div class="gnote'+(g.state==='blocked'?' stop':'')+'">'+ (g.state==='stale'?'⟲ ':'⚠ ') +esc(note)+'</div>';
+      card.innerHTML=html; wrap.appendChild(card);
+    });
+  }
   function stat(v,label,sub,warn){return '<div class="stat'+(warn?' warn':'')+'"><span class="v">'+v+'</span><span class="lbl">'+label+'</span><span class="sub">'+sub+'</span></div>';}
 
   // clock

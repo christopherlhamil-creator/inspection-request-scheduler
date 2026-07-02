@@ -8,8 +8,9 @@ any one client via a [`Config.gs`](Config.gs) layer.
 |---|---|
 | [`Config.gs`](Config.gs) | `PROJECT_CONFIG` — buildings, zone codes, the travel-time matrix, the two review lanes, deep-link template. Point the engine at a different project by editing this file only. Also defines the sign-off chain and the open/closed state sets. |
 | [`InspectionScheduler.gs`](InspectionScheduler.gs) | The engine: storage (UPSERT, never delete), `travelConflicts_()`, the `advanceSignoff()` state machine, and `getInspectionBoard()` board assembly. |
+| [`WorkPackageGate.gs`](WorkPackageGate.gs) | The compliance backbone: `computeGateStatus_()` gates a work package on submittals/RFIs/meeting/inspection evidence, and `reassessAffectedPackages_()` runs the staleness cascade when a drawing revision lands. |
 
-## The two things worth reading
+## The three things worth reading
 
 **`travelConflicts_()`** — the whole reason the tool exists. Scheduled inspections for the single
 authority inspector are grouped by day and walked in time order; each adjacent pair is flagged when the
@@ -21,6 +22,14 @@ screen* instead of in the field.
 (`Requested → Scheduled → Inspected → SuperBuyoff → AHJSigned`), with each transition guarded so an
 illegal move throws instead of silently corrupting a record. A fail short-circuits to `Failed` and
 notifies the superintendent rather than continuing the chain.
+
+**`computeGateStatus_()`** — inspections aren't the end of the line, they're evidence that unlocks a
+work package. This function is the reason the whole system exists: it treats a passing inspection as
+provisional, valid only against the drawing revision that was current when it was recorded. When an
+engineering change revises that drawing, `reassessAffectedPackages_()` re-runs the gate for every
+package governed by it — potentially flipping several from `OPEN` back to `NEEDS_REVERIFICATION` in one
+pass. Without this, a passed inspection could quietly certify installed work against a design that no
+longer exists.
 
 ## Two implementation notes from production
 

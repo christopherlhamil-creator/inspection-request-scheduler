@@ -1,12 +1,14 @@
 # Inspection Request Scheduler
 
-A single-inspector scheduling board with **travel-aware conflict detection** for large construction
-projects — the kind where a whole campus of trades all want the one city (AHJ) inspector at 2 PM, and
-someone has to figure out that he physically cannot be in two buildings at once.
+A single-inspector scheduling board with **travel-aware conflict detection**, feeding a **compliance
+gate** for large construction projects — the kind where a whole campus of trades all want the one city
+(AHJ) inspector at 2 PM, and where an inspection isn't the finish line, it's evidence that unlocks a
+scope of work.
 
 **▶ Live interactive demo:** open [`index.html`](index.html) in any browser — no build step, no server,
-no dependencies, works offline. All data is synthetic. Assign a request, walk the sign-off chain, and
-watch the conflict scan flag two 2 PM requests in different buildings.
+no dependencies, works offline. All data is synthetic. Assign a request, walk the sign-off chain, watch
+the conflict scan flag two 2 PM requests in different buildings, and scroll down to the **work package
+gates** — one of them is locked again because a design change outdated its evidence.
 
 ---
 
@@ -50,6 +52,34 @@ attention reads at a glance.
 inspector. Third-party testing-agency inspections are a separate entity the team only reviews and
 counter-signs — no conflict resolution — so they're filtered into their own lane rather than polluting
 the conflict scan.
+
+## Beyond scheduling: the compliance backbone
+
+The scheduler is the front door. What makes it more than a calendar is what the inspection evidence
+*feeds*: a work package can't open for construction until a chain of prerequisites is satisfied —
+
+```
+Spec requirement → Submittal approved → RFIs resolved → Pre-install meeting held → Work package gate
+```
+
+and an inspection is one of the gate's required proofs. That's a checklist. The part that's actually
+hard is this: **engineering changes happen mid-project**, and when one revises the drawing that governs
+a work package, any inspection recorded *before* that revision no longer proves anything — the gate
+re-locks until the work is re-inspected against the current drawing. Miss that, and a passed inspection
+quietly certifies work against a design that no longer exists.
+
+The demo's **Work Package Gates** panel shows all four states this produces:
+
+| State | Meaning |
+|---|---|
+| **Blocked** | A prerequisite (submittal, RFI, meeting) isn't satisfied yet — inspection status is irrelevant until it is. |
+| **Ready** | Every prerequisite is clear; the package is waiting on its inspection. |
+| **Reverify** | Inspection evidence exists, but a later design change revised the governing drawing — the gate re-locked. |
+| **Open** | Every prerequisite is satisfied and the evidence on file postdates the current drawing revision. |
+
+This staleness cascade was the actual reason the production system existed: not "can we schedule this
+inspection" but "can we prove, at any moment, exactly which drawing revision every piece of installed
+work was verified against."
 
 ## Design notes
 
