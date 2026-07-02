@@ -188,6 +188,24 @@
   .hchip .v{font-family:var(--mono);font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
   .hchip.warn .v{color:var(--stop)}
   .hchip .k{font-size:11px;color:var(--mut);margin-top:2px}
+
+  /* utilization audit */
+  table.util{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px}
+  table.util th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);
+    font-weight:600;padding:6px 10px;border-bottom:1px solid var(--line)}
+  table.util td{padding:7px 10px;border-bottom:1px solid var(--line2);vertical-align:top}
+  table.util td.mod{font-weight:650}
+  table.util td.mod .read{font-weight:400;color:var(--mut);font-size:11.5px;font-style:italic;margin-top:2px}
+  table.util td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+  .upill{font-size:10.5px;font-weight:650;text-transform:uppercase;letter-spacing:.02em;padding:3px 8px;border-radius:20px;white-space:nowrap}
+  .upill.account_wide_gap{background:var(--stop-tint);color:var(--stop)}
+  .upill.propagation_gap{background:var(--hold-tint);color:var(--hold)}
+  .upill.healthy{background:var(--go-tint);color:var(--go)}
+  .upill.unused_optional{background:var(--panel);color:var(--mut)}
+  .util-bug{font-size:12px;background:var(--steel-tint);color:var(--steel);border-radius:6px;padding:5px 8px;margin-top:4px}
+  .util-plan{display:flex;flex-direction:column;gap:8px;list-style:none;padding-left:0;margin:0}
+  .util-plan li{font-size:13px;line-height:1.5}
+  .util-plan .n{font-family:var(--mono);color:var(--steel);font-weight:700;margin-right:6px}
 </style>
 
 <div class="ib-root">
@@ -258,6 +276,19 @@
       <tbody id="xwalkBody"></tbody>
     </table>
     <div class="health-chips" id="xwalkHealth"></div>
+  </div>
+
+  <div class="gates-sec">
+    <div class="gates-h"><h2>Platform utilization audit</h2></div>
+    <p class="gates-sub">"Are we using our platform well?" usually gets answered with an impression in a
+      meeting. This turns it into a quantified, prioritized answer: populated-record counts per module
+      per building, classified against what the spec actually mandates — and separated into gaps that are
+      just normal project tapering vs. gaps that block everything built downstream of them.</p>
+    <table class="util">
+      <thead><tr><th>Module</th><th>B1</th><th>B2</th><th>B3</th><th>Status</th></tr></thead>
+      <tbody id="utilBody"></tbody>
+    </table>
+    <ol class="util-plan" id="utilPlan"></ol>
   </div>
 
   <div class="gates-sec">
@@ -423,6 +454,57 @@
     Inspections: {"01 33 00":0,"03 30 00":9,"23 21 00":0,"26 05 00":0,"07 84 00":0,"21 13 00":3},
     WorkItems:   {"01 33 00":0,"03 30 00":1,"23 21 00":1,"26 05 00":1,"07 84 00":1,"21 13 00":0}
   };
+
+  // ── platform utilization audit ───────────────────────────────────────
+  var UTIL_NEGLIGIBLE_RATIO=0.05, UTIL_DEFAULT_FLOOR=50;
+  function classifyModuleUtilization_(row){
+    var counts=row.counts, buildings=Object.keys(counts);
+    var values=buildings.map(function(b){return counts[b];});
+    var total=values.reduce(function(a,b){return a+b;},0);
+    var floor=row.thinFloor||UTIL_DEFAULT_FLOOR;
+    if(!row.mandated && total===0) return 'UNUSED_OPTIONAL';
+    if(total===0) return 'ACCOUNT_WIDE_GAP';
+    if(row.kind==='structural'){
+      var maxV=Math.max.apply(null,values);
+      if(maxV<floor) return 'ACCOUNT_WIDE_GAP';
+      var negligibleSomewhere=buildings.some(function(b){return counts[b]<maxV*UTIL_NEGLIGIBLE_RATIO;});
+      return negligibleSomewhere?'PROPAGATION_GAP':'HEALTHY';
+    }
+    var maxV2=Math.max.apply(null,values);
+    return maxV2<floor ? 'ACCOUNT_WIDE_GAP' : 'HEALTHY';
+  }
+  function buildUtilizationReport_(modules){
+    var order={ACCOUNT_WIDE_GAP:0, PROPAGATION_GAP:1, HEALTHY:2, UNUSED_OPTIONAL:3};
+    return modules.map(function(m){ return Object.assign({}, m, {status: classifyModuleUtilization_(m)}); })
+      .sort(function(a,b){return order[a.status]-order[b.status];});
+  }
+
+  var UTIL_MODULES=[
+    { module:"Forms / inspection checklists", kind:"structural", mandated:true, counts:{B1:3200,B2:58,B3:2},
+      read:"Used heavily in B1 only — B2/B3 inspections are essentially un-instrumented." },
+    { module:"Legacy checklist module", kind:"legacy", mandated:false, counts:{B1:0,B2:0,B3:0},
+      read:"Unused everywhere — team standardized on Forms instead. Confirms Forms is the only real inspection surface." },
+    { module:"Issues", kind:"transactional", mandated:true, counts:{B1:7900,B2:860,B3:175}, pipelineBug:true,
+      read:"Real usage is strong — a separate recurring data pull was reading the wrong table, which made this look unused until cross-checked against the full export." },
+    { module:"Commissioning assets / systems", kind:"structural", mandated:true, counts:{B1:4100,B2:0,B3:0},
+      read:"Register exists only in B1 — commissioning tagging cannot proceed elsewhere until this is built. Largest single gap." },
+    { module:"Locations / zone tree", kind:"structural", mandated:true, counts:{B1:80,B2:8,B3:1},
+      read:"Zone hierarchy thin outside B1 — nothing can be filtered or rolled up by area elsewhere." },
+    { module:"RFIs", kind:"transactional", mandated:true, counts:{B1:2000,B2:250,B3:15},
+      read:"Healthy in B1, thin in B3 — acceptable this early in the schedule, not a system gap." },
+    { module:"Submittals", kind:"transactional", mandated:true, counts:{B1:2400,B2:100,B3:4},
+      read:"Real pipeline in B1, barely started elsewhere — expected to grow with the schedule." },
+    { module:"Reviews / approvals workflow", kind:"structural", mandated:true, counts:{B1:0,B2:0,B3:0},
+      read:"Zero everywhere — approvals are happening outside the system of record." },
+    { module:"Master schedule activities", kind:"structural", mandated:true, counts:{B1:9000,B2:0,B3:0},
+      read:"Loaded in B1 only — milestones can't be tracked in-tool elsewhere." },
+    { module:"Cross-project template sync", kind:"structural", mandated:true, counts:{B1:2,B2:1,B3:1},
+      read:"Essentially unused, in absolute terms — and this is the root cause: nothing is being cloned forward, so B2/B3 rebuild everything by hand or don't build it at all." },
+    { module:"Photos", kind:"transactional", mandated:true, counts:{B1:6800,B2:380,B3:30},
+      read:"Captured but not consistently tied to zone/location, so results can't be rolled up by area." },
+    { module:"Daily logs", kind:"transactional", mandated:true, counts:{B1:0,B2:0,B3:0},
+      read:"Daily reporting not captured in the system of record at all." }
+  ];
 
   // ── lessons learned: pattern mining + carry-forward ──────────────────
   // Pre-aggregated failure counts per (category, trade, pattern, building) —
@@ -614,6 +696,7 @@
     right.forEach(function(r){Rt.appendChild(card(r,'right'));});
 
     drawCrosswalk();
+    drawUtilization();
     drawBulletins();
     drawGates();
     drawSummary();
@@ -698,6 +781,35 @@
   document.querySelectorAll('.xwalk-try .preset').forEach(function(btn){
     btn.onclick=function(){ document.getElementById('xwalkInput').value=btn.getAttribute('data-v'); runXwalkTry(); };
   });
+
+  function drawUtilization(){
+    var report=buildUtilizationReport_(UTIL_MODULES);
+    var body=document.getElementById('utilBody'); body.innerHTML='';
+    report.forEach(function(m){
+      var tr=document.createElement('tr');
+      var bugHtml = m.pipelineBug ? '<div class="util-bug">⚑ Flagged for a pipeline fix, not a usage fix — see recommendation #1 below.</div>' : '';
+      tr.innerHTML=
+        '<td class="mod">'+esc(m.module)+'<div class="read">'+esc(m.read)+'</div>'+bugHtml+'</td>'+
+        '<td class="num">'+m.counts.B1.toLocaleString()+'</td>'+
+        '<td class="num">'+m.counts.B2.toLocaleString()+'</td>'+
+        '<td class="num">'+m.counts.B3.toLocaleString()+'</td>'+
+        '<td><span class="upill '+m.status.toLowerCase()+'">'+m.status.replace(/_/g,' ')+'</span></td>';
+      body.appendChild(tr);
+    });
+    var plan=[
+      'Fix the Issues pipeline first. It\'s reading the wrong table, so downstream dashboards see an empty module that\'s actually the healthiest one on the account — a one-time fix, zero building work, unblocks the whole analytical layer.',
+      'Use cross-project template sync to clone B1\'s forms library, asset categories, zone tree, and issue configs into B2/B3. This is the root cause behind every other propagation gap below — the single biggest timeline lever, because it turns months of manual rebuild into a copy operation.',
+      'Stand up commissioning assets/systems in B2/B3 from the B1 categories. Nothing in the commissioning tagging process can proceed there until this register exists.',
+      'Build out the B2/B3 zone trees so Forms, Issues, Assets, and Photos can all be filtered and rolled up by area — one structural fix that unlocks reporting across four other modules at once.',
+      'Load the master schedule and activate Reviews so approvals and milestones live in the system of record instead of scattered outside it.'
+    ];
+    var ol=document.getElementById('utilPlan'); ol.innerHTML='';
+    plan.forEach(function(p,i){
+      var li=document.createElement('li');
+      li.innerHTML='<span class="n">'+(i+1)+'</span>'+esc(p);
+      ol.appendChild(li);
+    });
+  }
 
   function drawLessons(){
     var wrap=document.getElementById('lessons'); wrap.innerHTML='';

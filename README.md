@@ -7,9 +7,10 @@ scope of work.
 
 **▶ Live interactive demo:** open [`index.html`](index.html) in any browser — no build step, no server,
 no dependencies, works offline. All data is synthetic. Try the **section crosswalk** normalizer with a
-messy code of your own, watch the **change timeline** re-lock a work package, assign an inspection and
-walk its sign-off chain, watch the conflict scan flag two 2 PM requests in different buildings, and check
-the **lessons learned register** for a live, per-building carry-forward call on every recurring failure.
+messy code of your own, check the **platform utilization audit** for a prioritized "fix this first" plan,
+watch the **change timeline** re-lock a work package, assign an inspection and walk its sign-off chain,
+watch the conflict scan flag two 2 PM requests in different buildings, and check the **lessons learned
+register** for a live, per-building carry-forward call on every recurring failure.
 
 ---
 
@@ -71,6 +72,25 @@ section, with a health flag (`Thin` / `OK` / `Strong`), and an orphan check runs
 scoped work with no supporting evidence anywhere, and evidence with no scoped work behind it. This is the
 part that has to be right before anything built on top of it — the change timeline, the gates, the
 lessons register — can be trusted.
+
+## From reactive to proactive: the platform utilization audit
+
+"Are we using our platform well?" usually gets answered with an impression in a meeting, and never
+checked again until something breaks. The **platform utilization audit** panel turns it into a quantified,
+prioritized answer instead: populated-record counts for every module, across every building, checked
+against what the spec actually mandates.
+
+The one thing that has to be a judgment call, not a formula: whether a module is **structural** — an
+asset register, a zone hierarchy, a template library, something everything else depends on — or
+**transactional** — RFIs, submittals, photos, volume that's supposed to grow as a building's schedule
+progresses. The same "2% of what the lead building has" number means a real, fixable gap for one and
+completely normal tapering for the other. Get that classification wrong and the audit either panics over
+nothing or misses the thing that's actually blocking every other building.
+
+The output isn't just a red/yellow/green table — it's a **priority-ordered fix list**: a one-time data-
+pipeline bug that's making a healthy module look abandoned goes first (zero building work, unblocks
+everything downstream of it), then the single structural fix with the most leverage, then the registers
+nothing else can be built on top of without.
 
 ## Beyond scheduling: the compliance backbone
 
@@ -185,6 +205,7 @@ asked about directly.
 | **Bootstrap / deploy** *(this repo, [`apps-script/BootstrapDeploy.gs`](apps-script/BootstrapDeploy.gs))* | Name-based Drive resource discovery — the same script deploys to a new Google account with zero hardcoded IDs |
 | **Lessons learned** *(this repo, [`apps-script/LessonsLearned.gs`](apps-script/LessonsLearned.gs))* | Mines a failure tally for recurring patterns and flags which ones are still actionable elsewhere on the project |
 | **Section crosswalk** *(this repo, [`apps-script/SectionCrosswalk.gs`](apps-script/SectionCrosswalk.gs))* | Reconciles inconsistent spec-section formats to one canonical key; coverage/orphan audit across source systems |
+| **Platform utilization audit** *(this repo, [`apps-script/UtilizationAudit.gs`](apps-script/UtilizationAudit.gs))* | Quantifies whether the platform is actually used the way the spec mandates; a priority-ordered fix list, not just a red/green table |
 | Sub Portal | External subcontractor view — reschedule, hold, withdraw an inspection request without internal-tool access |
 | MEP PM Board | Trade coordination view for mechanical/electrical/plumbing scope |
 | 3-Week Look-Ahead | Rolling schedule view scoped to near-term work |

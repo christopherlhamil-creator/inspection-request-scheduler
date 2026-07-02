@@ -13,8 +13,9 @@ any one client via a [`Config.gs`](Config.gs) layer.
 | [`BootstrapDeploy.gs`](BootstrapDeploy.gs) | Self-configuring first run: resolves the database Spreadsheet and Drive folder **by name**, not by ID, so a copy of this project works on a fresh Google account with zero config edits. |
 | [`LessonsLearned.gs`](LessonsLearned.gs) | Mines a project's own inspection-failure history for recurring patterns, promotes a pattern to a lesson once it clears a recurrence threshold, and flags which lessons are urgent because that trade's scope hasn't started elsewhere on the project yet. |
 | [`SectionCrosswalk.gs`](SectionCrosswalk.gs) | The foundation everything else assumes: reconciles a spec section referenced in five inconsistent formats to one canonical key, refusing to guess on genuinely ambiguous input, then audits coverage and finds orphans in both directions. |
+| [`UtilizationAudit.gs`](UtilizationAudit.gs) | Turns "are we using our platform well?" into a quantified, prioritized answer: classifies each module's populated-record counts per building against what the spec mandates, distinguishing a real structural gap from normal project-phase tapering. |
 
-## The seven things worth reading
+## The eight things worth reading
 
 **`travelConflicts_()`** — the whole reason the tool exists. Scheduled inspections for the single
 authority inspector are grouped by day and walked in time order; each adjacent pair is flagged when the
@@ -68,6 +69,19 @@ against the exact shapes of input that show up in a real export — including th
 `buildCoverageMatrix_()` and `findOrphans_()` then run on top of that key: per section, how many of N
 source systems have a record, and — checking both directions — which scoped work items have no
 supporting evidence anywhere, and which evidence has no scoped work item behind it.
+
+**`classifyModuleUtilization_()`** — the one judgment call this makes explicit rather than inferring. A
+module sitting at 2% of its origin building's record count could mean two very different things: a
+structural resource (an asset register, a zone hierarchy, a template library) that was never propagated
+to the other buildings — a real, fixable gap — or a transactional log (RFIs, submittals, photos) whose
+volume is naturally lower because that building's schedule hasn't caught up yet. Collapsing that
+distinction into one metric misreads normal project tapering as a crisis, or a real crisis as normal
+tapering. This takes `kind` as an explicit input instead of trying to infer it from the numbers, then
+applies a different rule to each: structural gaps get flagged the moment any building falls negligibly
+below the best one; transactional gaps only get flagged if the *best* building never cleared a floor at
+all. Verified against 12 cases spanning every real-data pattern this needed to separate before it shipped
+— including the one that initially slipped through: a module tiny everywhere, which is a real
+account-wide gap, not a "some buildings are behind" gap.
 
 ## Two implementation notes from production
 
